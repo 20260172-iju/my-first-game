@@ -1,122 +1,143 @@
-import pygame
-import random
-import math
+import pygame, sys, math, random
 
 pygame.init()
-
-WIDTH, HEIGHT = 900, 600
-screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("✨ Fancy Particle Playground (Enhanced)")
-
+screen = pygame.display.set_mode((800, 600))
 clock = pygame.time.Clock()
+font = pygame.font.SysFont(None, 30)
+big_font = pygame.font.SysFont(None, 60)
 
-particles = []
+WHITE, BLACK = (255,255,255), (0,0,0)
 
-# 반투명 화면 (잔상 효과용)
-trail_surface = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+x, y = 400, 300
+speed, size = 10, 20
 
-class Particle:
-    def __init__(self, x, y):
-        self.x = x
-        self.y = y
+best_time = 0
 
-        angle = random.uniform(0, math.pi * 2)
-        speed = random.uniform(2, 7)
+def reset_game():
+    return (
+        400, 300,
+        [[100, 100, 3, 3, False]],
+        pygame.time.get_ticks()
+    )
 
-        self.vx = math.cos(angle) * speed
-        self.vy = math.sin(angle) * speed
+x, y, spears, start_time = reset_game()
+show_record = False
+record_timer = 0
 
-        self.life = random.randint(50, 100)
-        self.max_life = self.life
+while True:
+    for e in pygame.event.get():
+        if e.type == pygame.QUIT:
+            pygame.quit(); sys.exit()
 
-        self.size = random.randint(4, 8)
+    # 🧍 이동
+    k = pygame.key.get_pressed()
+    x += (k[pygame.K_d] - k[pygame.K_a]) * speed
+    y += (k[pygame.K_s] - k[pygame.K_w]) * speed
 
-        # 부드러운 색상
-        self.base_color = [
-            random.randint(180, 255),
-            random.randint(120, 255),
-            random.randint(180, 255)
-        ]
+    x = max(size, min(800-size, x))
+    y = max(size, min(600-size, y))
 
-    def update(self):
-        self.x += self.vx
-        self.y += self.vy
+    screen.fill(BLACK)
 
-        # 공기 저항 느낌
-        self.vx *= 0.99
-        self.vy *= 0.99
+    # 🧍 사람
+    pygame.draw.circle(screen, WHITE, (int(x), int(y-size)), size//2)
+    pygame.draw.line(screen, WHITE, (x,y-size//2),(x,y+size),2)
+    pygame.draw.line(screen, WHITE, (x-size,y),(x+size,y),2)
+    pygame.draw.line(screen, WHITE, (x,y+size),(x-size,y+size*2),2)
+    pygame.draw.line(screen, WHITE, (x,y+size),(x+size,y+size*2),2)
 
-        # 중력
-        self.vy += 0.07
+    new_spears = []
+    spawned_this_frame = False
 
-        self.life -= 1
+    for s in spears:
+        sx, sy, dx, dy, prev = s
 
-    def draw(self, surf):
-        if self.life <= 0:
-            return
+        sx += dx
+        sy += dy
 
-        # 생명 비율 (0~1)
-        life_ratio = self.life / self.max_life
+        bounced = False
 
-        # 크기 점점 감소
-        size = int(self.size * life_ratio)
+        # 🔹 벽 충돌 + 위치 보정
+        if sx <= 0:
+            sx = 5; bounced = True
+        elif sx >= 800:
+            sx = 795; bounced = True
 
-        # 색 점점 어두워짐
-        color = (
-            int(self.base_color[0] * life_ratio),
-            int(self.base_color[1] * life_ratio),
-            int(self.base_color[2] * life_ratio)
-        )
+        if sy <= 0:
+            sy = 5; bounced = True
+        elif sy >= 600:
+            sy = 595; bounced = True
 
-        # 빛나는 효과 (겹쳐 그리기)
-        pygame.draw.circle(surf, color, (int(self.x), int(self.y)), size)
-        pygame.draw.circle(surf, color, (int(self.x), int(self.y)), size // 2)
+        # 🔥 중앙 방향으로 튕김
+        if bounced and not prev and not spawned_this_frame:
 
-    def alive(self):
-        return self.life > 0
+            center_x, center_y = 400, 300
 
+            # 중앙을 향한 기본 각도
+            base_angle = math.atan2(center_y - sy, center_x - sx)
 
-def draw_background(surface, t):
-    for y in range(HEIGHT):
-        c = int(60 + 40 * math.sin(y * 0.01 + t))
-        color = (20, c, 80 + c//2)
-        pygame.draw.line(surface, color, (0, y), (WIDTH, y))
+            # 랜덤 오차 (자연스러움)
+            angle = base_angle + random.uniform(-0.5, 0.5)
 
+            dx = math.cos(angle) * 4
+            dy = math.sin(angle) * 4
 
-running = True
-time = 0
+            # 🔥 벽에서 밀어내기
+            sx += dx * 2
+            sy += dy * 2
 
-while running:
+            new_spears.append([
+                sx, sy,
+                math.cos(angle)*4,
+                math.sin(angle)*4,
+                False
+            ])
 
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            running = False
+            spawned_this_frame = True
 
-    mouse = pygame.mouse.get_pos()
-    buttons = pygame.mouse.get_pressed()
+        # 💥 충돌
+        if math.hypot(x - sx, y - sy) < size + 10:
+            elapsed = (pygame.time.get_ticks() - start_time) / 1000
 
-    # 클릭하면 폭발 느낌
-    if buttons[0]:
-        for _ in range(12):
-            particles.append(Particle(mouse[0], mouse[1]))
+            if elapsed > best_time:
+                best_time = elapsed
+                show_record = True
+                record_timer = pygame.time.get_ticks()
 
-    time += 0.03
+            x, y, spears, start_time = reset_game()
 
-    # 배경
-    draw_background(screen, time)
+        # ⚔️ 창 그리기
+        dist = math.hypot(dx, dy)
+        if dist:
+            nx, ny = dx/dist, dy/dist
+            tip = (sx+nx*40, sy+ny*40)
+            l = (sx+nx*25-ny*5, sy+ny*25+nx*5)
+            r = (sx+nx*25+ny*5, sy+ny*25-nx*5)
 
-    # 잔상 효과 (살짝 덮기)
-    trail_surface.fill((0, 0, 0, 40))
-    screen.blit(trail_surface, (0, 0))
+            pygame.draw.line(screen, WHITE,
+                             (sx-nx*15,sy-ny*15), tip, 2)
+            pygame.draw.polygon(screen, WHITE, [tip,l,r])
 
-    # 파티클 업데이트
-    for p in particles:
-        p.update()
-        p.draw(screen)
+        s[0], s[1], s[2], s[3], s[4] = sx, sy, dx, dy, bounced
 
-    particles = [p for p in particles if p.alive()]
+    spears.extend(new_spears)
+
+    # ⏱️ 시간
+    elapsed = (pygame.time.get_ticks() - start_time) / 1000
+
+    info = font.render(
+        f"FPS:{int(clock.get_fps())} TIME:{elapsed:.1f}s BEST:{best_time:.1f}s",
+        True, WHITE
+    )
+    screen.blit(info, (10, 10))
+
+    # 🏆 신기록 표시
+    if show_record:
+        if pygame.time.get_ticks() - record_timer < 2000:
+            text = big_font.render("NEW RECORD!", True, WHITE)
+            screen.blit(text, (250, 250))
+        else:
+            show_record = False
 
     pygame.display.flip()
-    clock.tick(60)
-
-pygame.quit()
+    clock.tick(60) 
